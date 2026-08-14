@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="logo.png" alt="VibeAR Logo" width="120" />
+<img src="logo.svg" alt="VibeAR Logo" width="120" />
 
-# VibeAR — Arabic Sentiment Analysis API
+# VibeAR — Arabic Sentiment Analysis 
 
 **A lightweight, production-ready sentiment analysis service for Arabic text, built with FastAPI and scikit-learn.**
 

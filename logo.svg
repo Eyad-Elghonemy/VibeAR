@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <!-- Background Gradient (Dark Mode) -->
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A" />
+      <stop offset="100%" stop-color="#020617" />
+    </linearGradient>
+
+    <!-- Teal Gradient (Positive - FastAPI Vibe) -->
+    <linearGradient id="teal-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#14B8A6" />
+      <stop offset="100%" stop-color="#0D9488" />
+    </linearGradient>
+
+    <!-- Orange Gradient (Negative - scikit-learn Vibe) -->
+    <linearGradient id="orange-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#F97316" />
+      <stop offset="100%" stop-color="#EA580C" />
+    </linearGradient>
+  </defs>
+
+  <!-- Square Canvas with rounded corners -->
+  <rect width="1024" height="1024" fill="url(#bg-grad)" rx="225" />
+
+  <!-- Classification Paths -->
+  <g>
+    <!-- Path to Negative (Down) -->
+    <path d="M 320 512 C 520 512, 520 760, 680 760" 
+          fill="none" 
+          stroke="url(#orange-grad)" 
+          stroke-width="50" 
+          stroke-linecap="round" />
+          
+    <!-- Path to Positive (Up) -->
+    <path d="M 320 512 C 520 512, 520 264, 680 264" 
+          fill="none" 
+          stroke="url(#teal-grad)" 
+          stroke-width="50" 
+          stroke-linecap="round" />
+
+    <!-- Input Node (The Text) -->
+    <circle cx="320" cy="512" r="60" fill="#E2E8F0" />
+    <circle cx="320" cy="512" r="20" fill="#0F172A" />
+
+    <!-- Positive Node -->
+    <circle cx="700" cy="264" r="75" fill="url(#teal-grad)" />
+    <!-- Plus sign for positive -->
+    <path d="M 665 264 L 735 264 M 700 229 L 700 299" 
+          stroke="#0F172A" 
+          stroke-width="16" 
+          stroke-linecap="round" />
+
+    <!-- Negative Node -->
+    <circle cx="700" cy="760" r="75" fill="url(#orange-grad)" />
+    <!-- Minus sign for negative -->
+    <path d="M 665 760 L 735 760" 
+          stroke="#0F172A" 
+          stroke-width="16" 
+          stroke-linecap="round" />
+  </g>
+</svg>
