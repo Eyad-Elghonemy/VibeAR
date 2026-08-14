@@ -1,0 +1,36 @@
+{
+  "status": "Model Ready",
+  "timestamp": "2026-08-14T01:25:49.340831",
+  "classes": [
+    "neg",
+    "pos"
+  ],
+  "evaluation": {
+    "neg": {
+      "precision": 0.7735924397710635,
+      "recall": 0.8062144541545291,
+      "f1-score": 0.789566634968075,
+      "support": 7209.0
+    },
+    "pos": {
+      "precision": 0.8052961672473867,
+      "recall": 0.7725631768953068,
+      "f1-score": 0.7885901460352123,
+      "support": 7479.0
+    },
+    "accuracy": 0.7890795206971678,
+    "macro avg": {
+      "precision": 0.7894443035092251,
+      "recall": 0.789388815524918,
+      "f1-score": 0.7890783905016436,
+      "support": 14688.0
+    },
+    "weighted avg": {
+      "precision": 0.7897356980632354,
+      "recall": 0.7890795206971678,
+      "f1-score": 0.7890694154195401,
+      "support": 14688.0
+    }
+  },
+  "sklearn_version": "1.6.1"
+}

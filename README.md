@@ -1,0 +1,1 @@
+## `Genreral Sentiment-Analysis API`
