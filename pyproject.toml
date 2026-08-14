@@ -1,0 +1,18 @@
+[project]
+name = "fashon-mnist-classification"
+version = "1.0.0"
+description = "fashon-mnist Classification API"
+requires-python = "==3.12.*"
+dependencies = [
+    "uvicorn==0.51.0",
+    "fastapi[standard]==0.139.2",
+    "tensorflow==2.21.0",
+    "pydantic==2.13.4",
+    "joblib==1.5.3",
+    "python-dotenv==1.2.2",
+    "python-multipart==0.0.32",
+    "supabase==2.31.0",
+    "scikit-learn==1.6.1",
+    "pandas==2.2.3",
+    "Pillow==11.0.0",
+]
