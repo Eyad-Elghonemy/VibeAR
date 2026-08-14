@@ -1,7 +1,7 @@
 [project]
-name = "fashon-mnist-classification"
+name = "VibeAR"
 version = "1.0.0"
-description = "fashon-mnist Classification API"
+description = "VibeAR Sentiment Analysis API"
 requires-python = "==3.12.*"
 dependencies = [
     "uvicorn==0.51.0",
