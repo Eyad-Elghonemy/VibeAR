@@ -16,6 +16,17 @@
 
 ---
 
+## 🔗 Live Demo
+
+> ⚠️ **Security note:** the key below is a **demo key** shared for evaluation only. If this repository is public, rotate it immediately (set a new `SECRET_KEY_TOKEN` in your Hugging Face Space secrets) — never rely on a key that has appeared in a public README for anything beyond a quick demo.
+
+```
+Demo X-API-Key: c0c2d9d05029aed5d5174ff5ff8e6d88
+```
+
+---
+
+
 ## What is VibeAR?
 
 VibeAR is a REST API that classifies Arabic text (tweets, reviews, feedback...) as **Positive** or **Negative** in real time. It ships with a **default pre-trained model** ready to use out of the box, and also lets you **train your own model from scratch** on your own data through a single endpoint — no need to touch the code.
