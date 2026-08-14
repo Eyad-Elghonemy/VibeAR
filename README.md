@@ -26,14 +26,69 @@ Demo X-API-Key: c0c2d9d05029aed5d5174ff5ff8e6d88
 
 ---
 
-
 ## What is VibeAR?
 
-VibeAR is a REST API that classifies Arabic text (tweets, reviews, feedback...) as **Positive** or **Negative** in real time. It ships with a **default pre-trained model** ready to use out of the box, and also lets you **train your own model from scratch** on your own data through a single endpoint — no need to touch the code.
+VibeAR is a REST API that classifies Arabic text (tweets, reviews, feedback...) as **Positive** or **Negative** in real time.
 
-- **Default model** — a `TfidfVectorizer` + `LogisticRegression` pipeline, pre-trained on ~58,000 labeled Arabic tweets, ready to use immediately.
-- **Custom training** — send your own `texts` + `labels` to `/train` and get a freshly trained model, without redeploying the app.
-- **Switch back anytime** — `/use-default-model` restores the original pre-trained model without retraining, in case your custom model doesn't work out.
+---
+
+## 🧠 Use the Default Model, or Train Your Own
+
+This is the core idea behind VibeAR: **you're never locked into one model.** Every deployment ships with a ready-to-use classifier, but the moment you have your own labeled data, you can swap it in — live, with zero downtime, and zero code changes.
+
+| | Default model | Your own model |
+|---|---|---|
+| **Setup needed** | None — works out of the box | One `POST /train` call |
+| **Best for** | General Arabic tweets/text, quick prototyping | Domain-specific text (reviews, support tickets, comments...) |
+| **Training data** | ~58,000 pre-labeled Arabic tweets (included) | Whatever `texts` + `labels` you send |
+| **Downtime while training** | — | None — the old model keeps serving `/predict` until the new one is ready |
+| **Made a mistake / model underperforms?** | — | One `POST /use-default-model` call reverts instantly, no retraining needed |
+
+**How the switch actually works:**
+
+```
+                 ┌────────────────────┐
+                 │   Default model     │  ← always available, never overwritten
+                 │ (default_model_*)   │
+                 └──────────┬──────────┘
+                            │ starts as active model
+                            ▼
+                  ┌───────────────────┐
+   POST /train ──▶│   Active model     │──▶ /predict, /predict-batch
+                  │  (model_pickle.*)  │
+                  └─────────▲──────────┘
+                            │
+       POST /use-default-model  (instantly restores the default, no retraining)
+```
+
+**End-to-end example — train on your own data, check progress, predict, then roll back:**
+
+```bash
+# 1. Kick off training on your own labeled data (returns immediately)
+curl -X POST http://127.0.0.1:8000/train \
+  -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "texts": ["الخدمة كانت ممتازة", "التجربة كانت سيئة جدا"],
+        "labels": ["pos", "neg"]
+      }'
+# → {"status": "Training", ...}
+
+# 2. Poll until training finishes
+curl http://127.0.0.1:8000/status -H "X-API-Key: $API_KEY"
+# → {"status": "Model Ready", "evaluation": {...}}
+
+# 3. Predict with your freshly trained model
+curl -X POST http://127.0.0.1:8000/predict \
+  -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "التوصيل كان سريع جدا"}'
+
+# 4. Not happy with the result? Roll back to the default model instantly
+curl -X POST http://127.0.0.1:8000/use-default-model -H "X-API-Key: $API_KEY"
+```
+
+> 💡 **Tip:** because training runs in a background thread, the API keeps serving predictions with the *current* model while a new one trains — your service never goes down mid-training.
 
 ---
 
@@ -273,6 +328,21 @@ Predicts the sentiment of a list of sentences in one request.
 
 ---
 
+## Roadmap
+
+- [ ] Persist multiple custom models (not just one "active" slot) and let clients pick which one to use per request
+- [ ] Add a `/models` endpoint to list all trained models with their evaluation reports
+- [ ] Confidence threshold on `/predict` responses to flag low-confidence / out-of-domain predictions
+- [ ] Optional neutral class (currently binary pos/neg only)
+- [ ] Dockerfile for one-command deployment
+
+---
+
+## Contributing
+
+Issues and pull requests are welcome. If you're proposing a change to `NLPTrainer.py`'s core training logic, please include the evaluation report (`/status` output) before and after your change so the impact is easy to review.
+
+---
 ## Security Notes
 
 - Every endpoint (except none — all are protected) requires a valid `X-API-Key` header.
