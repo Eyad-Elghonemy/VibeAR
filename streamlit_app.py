@@ -684,13 +684,22 @@ h1,h2,h3,h4{font-family:'Space Grotesk',sans-serif !important;color:var(--txt) !
   border:1px solid rgba(20,184,166,.3);border-radius:6px;padding:.1rem .4rem;}
 .src-chip{display:inline-flex;align-items:center;gap:.55rem;
   background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.26);
-  border-radius:10px;padding:.38rem .75rem;margin:.9rem 0 .2rem;
+  border-radius:10px;padding:.38rem .75rem;margin:.9rem 0 .8rem;
   font-family:'JetBrains Mono',monospace;font-size:.72rem;color:#bfe9f2;}
 .src-chip b{color:#5b7f8c;font-weight:400;font-size:.6rem;letter-spacing:.16em;
   text-transform:uppercase;}
+.model-badge{display:flex;flex-wrap:wrap;align-items:center;gap:.85rem;
+  background:linear-gradient(135deg, rgba(34,211,238,.09), rgba(15,23,42,.5));
+  border:1px solid rgba(34,211,238,.22);border-left:3px solid rgba(34,211,238,.6);
+  border-radius:12px;padding:.9rem 1.15rem;margin:1.1rem 0 1rem;
+  font-family:'Inter',sans-serif;font-size:1rem;color:#e4ecf5;line-height:1.55;
+  box-shadow:0 10px 26px -16px rgba(34,211,238,.4);}
+.model-badge b{font-weight:700;font-size:.76rem;letter-spacing:.08em;
+  text-transform:uppercase;white-space:nowrap;border-radius:7px;
+  padding:.3rem .65rem;}
 .info-note{direction:ltr;text-align:left;unicode-bidi:isolate;
   background:rgba(34,211,238,.06);border-left:2px solid rgba(34,211,238,.5);
-  border-radius:0 11px 11px 0;padding:.65rem .9rem;margin:.9rem 0 .3rem;
+  border-radius:0 11px 11px 0;padding:.65rem .9rem;margin:.9rem 0 1rem;
   font-family:'Inter',sans-serif;font-size:.86rem;color:#bcc7da;line-height:1.65;}
 /* file uploader */
 [data-testid="stFileUploaderDropzone"],[data-testid="stFileUploader"] section{
@@ -848,6 +857,10 @@ hr{border-color:var(--stroke);}
 .tbl .arc{direction:rtl;text-align:right;unicode-bidi:isolate;font-family:'Tajawal',sans-serif;
   font-weight:500;font-size:.95rem;}
 .ok{color:var(--gr);} .bad{color:var(--rd);} .warn{color:var(--am);}
+.tbl tr.row-pos td{background:rgba(52,211,153,.07);}
+.tbl tr.row-neg td{background:rgba(251,113,133,.06);}
+.tbl tr.row-pos:hover td{background:rgba(52,211,153,.13);}
+.tbl tr.row-neg:hover td{background:rgba(251,113,133,.12);}
 .lead{color:var(--muted);font-weight:300;line-height:1.85;font-size:.95rem;}
 </style>
 """
@@ -870,6 +883,95 @@ def hero(title_html: str, sub: str, ar_line: str = "", eyebrow: str = "") -> Non
 
 def ar_note(text: str) -> None:
     st.markdown(f'<div class="ar-note">{text}</div>', unsafe_allow_html=True)
+
+
+def is_own_trained_active() -> bool:
+    """True if the live /status timestamp matches the one this session
+    recorded right after a successful training run."""
+    ok = globals().get("live_ok", False)
+    data = globals().get("live_data", {}) or {}
+    ts = data.get("timestamp", "")
+    own_ts = st.session_state.get("own_model_ts")
+    return bool(ok and ts and own_ts and ts == own_ts)
+
+
+def model_badge() -> None:
+    """Small banner showing which model is currently serving /predict, right
+    above the prediction UI. Reuses the already-fetched /status data — no
+    extra API call. If the live timestamp matches the timestamp this session
+    recorded right after a successful training run, it's your trained model;
+    otherwise it's treated as the default model (only reliable within this
+    browser session, since the project has no login/user accounts)."""
+    ok = globals().get("live_ok", False)
+    data = globals().get("live_data", {}) or {}
+    if not ok:
+        st.markdown(
+            '<div class="model-badge" style="border-left-color:#fb7185;">'
+            '<b style="color:#ffb3bd;background:rgba(251,113,133,.16);">Active model</b>'
+            'Unknown — could not reach /status. Check the connection in the sidebar.</div>',
+            unsafe_allow_html=True,
+        )
+        return
+    ev = data.get("evaluation", {})
+    acc = ev.get("accuracy")
+    ts = data.get("timestamp", "")
+    acc_txt = f"{acc * 100:.1f}% accuracy" if isinstance(acc, (int, float)) else "accuracy n/a"
+    ts_txt = ts[:16].replace("T", " ") if ts else "—"
+
+    is_trained = is_own_trained_active()
+
+    if is_trained:
+        label, color, msg = (
+            "TRAINED MODEL", "#8ff0c8",
+            f"Predictions right now come from the model you trained · {acc_txt} · trained {ts_txt}",
+        )
+    else:
+        label, color, msg = (
+            "DEFAULT MODEL", "#93c5fd",
+            f"Predictions right now come from the shipped default model, not one you trained · "
+            f"{acc_txt} · updated {ts_txt}",
+        )
+
+    st.markdown(
+        f'<div class="model-badge" style="border-left-color:{color};">'
+        f'<b style="color:{color};background:{color}22;">{label}</b>{msg}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def model_switcher() -> None:
+    """Lets the user act on which model is serving predictions, with a single
+    contextual button instead of a picker — since only one action is ever
+    actually possible at a time. Backed entirely by the existing
+    /use-default-model endpoint; switching *to* the default is always
+    possible. Switching back to a trained model has no dedicated endpoint,
+    so that case retrains with the same data instead of pretending to
+    restore something the server can't restore."""
+    ok = globals().get("live_ok", False)
+    if not ok:
+        return
+    trained_active = is_own_trained_active()
+    has_own = bool(st.session_state.get("own_model_ts")) and bool(st.session_state.get("last_train_raw"))
+
+    if trained_active:
+        if st.button("Switch to default model", key="switch_to_default_btn"):
+            with st.spinner("Switching..."):
+                ok2, data2, meta2 = api("POST", "/use-default-model")
+            if ok2:
+                fetch_status.clear()
+                st.success("Switched — predictions now use the default model.")
+                st.rerun()
+            else:
+                st.error(f"Failed: {data2}")
+    elif has_own:
+        if st.button("Go retrain with my last data", key="go_retrain_btn"):
+            st.session_state["prefill_train_data"] = True
+            st.session_state["pending_nav"] = PAGES[3]
+            st.rerun()
+    else:
+        if st.button("Go train a model", key="go_train_btn"):
+            st.session_state["pending_nav"] = PAGES[3]
+            st.rerun()
 
 
 def lead(text: str) -> None:
@@ -1084,6 +1186,48 @@ def parse_tabular(raw: bytes, filename: str):
     return texts, unify_labels(labels), bad, info
 
 
+def parse_text_only(raw: bytes, filename: str):
+    """Reads a .csv/.tsv upload for batch prediction and returns (texts, info).
+
+    Unlike parse_tabular, no label column is required — just one column of
+    sentences. If a header row names a text-like column (see TEXT_KEYS) it's
+    used; otherwise every non-empty cell in the file is treated as one
+    sentence (first column if the file has more than one).
+    """
+    body = _decode(raw)
+    name = filename.lower()
+    if name.endswith(".tsv"):
+        delim = "\t"
+    else:
+        head = body[:8000]
+        delim = max([",", ";", "\t", "|"], key=head.count)
+        if head.count(delim) == 0:
+            delim = ","
+
+    rows = [r for r in csv.reader(io.StringIO(body), delimiter=delim)
+            if any(c.strip() for c in r)]
+    if not rows:
+        return [], "That file has no readable rows."
+
+    first = [c.strip().lower() for c in rows[0]]
+    t_col = None
+    if any(c in TEXT_KEYS for c in first):
+        for i, c in enumerate(first):
+            if c in TEXT_KEYS:
+                t_col = i
+                break
+        rows = rows[1:]
+        info = (f"Header detected · text column <code>{esc(first[t_col])}</code>, "
+                f"delimiter <code>{'TAB' if delim == chr(9) else esc(delim)}</code>.")
+    else:
+        t_col = 0
+        info = (f"No header found · using column 1 as the text, delimiter "
+                f"<code>{'TAB' if delim == chr(9) else esc(delim)}</code>.")
+
+    texts = [r[t_col].strip() for r in rows if len(r) > t_col and r[t_col].strip()]
+    return texts, info
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # API layer
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1091,7 +1235,9 @@ def parse_tabular(raw: bytes, filename: str):
 def api(method: str, path: str, payload: dict | None = None, timeout: int = 45):
     """Returns (ok, data, meta) where meta carries latency and status code."""
     base = st.session_state.get("api_base", API_BASE_DEFAULT).rstrip("/")
-    key = st.session_state.get("api_key", API_KEY_DEFAULT)
+    key = st.session_state.get("api_key", "")
+    if not key or not key.strip():
+        return False, "⚠️ Please enter your API key before sending a request.", {"ms": 0, "code": 0}
     headers = {"X-API-Key": key, "Content-Type": "application/json"}
     t0 = time.perf_counter()
     try:
@@ -1105,7 +1251,23 @@ def api(method: str, path: str, payload: dict | None = None, timeout: int = 45):
             return False, str(detail), meta
         return True, r.json(), meta
     except requests.exceptions.Timeout:
-        return False, "Request timed out.", {"ms": timeout * 1000, "code": 0}
+        # The server may be a cold/sleeping instance waking up on the first request.
+        # Give it one more, longer chance instead of surfacing a raw timeout error.
+        wake_timeout = max(timeout, 90)
+        try:
+            r = requests.request(method, f"{base}{path}", headers=headers, json=payload, timeout=wake_timeout)
+            meta = {"ms": (time.perf_counter() - t0) * 1000, "code": r.status_code}
+            if r.status_code >= 400:
+                try:
+                    detail = r.json().get("detail", r.text)
+                except Exception:
+                    detail = r.text[:300]
+                return False, str(detail), meta
+            return True, r.json(), meta
+        except requests.exceptions.Timeout:
+            return False, "⏳ The server looks like it was asleep and is waking up now — this can take a bit on the first request. Please wait a moment and try again.", {"ms": wake_timeout * 1000, "code": 0}
+        except Exception as e:  # noqa: BLE001
+            return False, f"Connection failed: {e}", {"ms": 0, "code": 0}
     except Exception as e:  # noqa: BLE001
         return False, f"Connection failed: {e}", {"ms": 0, "code": 0}
 
@@ -1146,13 +1308,10 @@ with st.sidebar:
         '<div class="rail-sub">Arabic Sentiment</div></div></div>',
         unsafe_allow_html=True,
     )
-    st.markdown('<div class="rail-cap">Navigate</div>', unsafe_allow_html=True)
-    page = st.radio("Navigation", PAGES, label_visibility="collapsed")
 
-    st.markdown("---")
     st.markdown('<div class="conn-cap">Connection</div>', unsafe_allow_html=True)
     st.session_state["api_base"] = API_BASE
-    st.session_state.setdefault("api_key", API_KEY_DEFAULT)
+    st.session_state.setdefault("api_key", "")
     st.markdown(
         f'<span class="conn-base"><b>Base URL · built in</b>{API_BASE}</span>',
         unsafe_allow_html=True,
@@ -1168,7 +1327,24 @@ with st.sidebar:
         st.session_state.get("api_base", API_BASE_DEFAULT),
         st.session_state.get("api_key", API_KEY_DEFAULT),
     )
+    st.markdown(
+        """<style>
+        [data-testid="stTextInputRootElement"]:has(input[aria-label="API key"]){
+          transition:border-color .3s ease, box-shadow .3s ease;
+        }
+        </style>""",
+        unsafe_allow_html=True,
+    )
     if live_ok:
+        st.markdown(
+            """<style>
+            [data-testid="stTextInputRootElement"]:has(input[aria-label="API key"]){
+              border-color:#34d399 !important;
+              box-shadow:0 0 0 3px rgba(52,211,153,.18),0 0 16px rgba(52,211,153,.4) !important;
+            }
+            </style>""",
+            unsafe_allow_html=True,
+        )
         st.markdown(
             '<div class="rail-chip" style="color:#8ff0c8;">'
             '<span class="dot"></span>API ONLINE</div>',
@@ -1176,11 +1352,31 @@ with st.sidebar:
         )
     else:
         st.markdown(
+            """<style>
+            [data-testid="stTextInputRootElement"]:has(input[aria-label="API key"]){
+              border-color:#fb7185 !important;
+              box-shadow:0 0 0 3px rgba(251,113,133,.18),0 0 16px rgba(251,113,133,.5) !important;
+              animation:apiKeyPulse 1.6s ease-in-out infinite;
+            }
+            @keyframes apiKeyPulse{
+              0%,100%{box-shadow:0 0 0 3px rgba(251,113,133,.18),0 0 10px rgba(251,113,133,.35);}
+              50%{box-shadow:0 0 0 6px rgba(251,113,133,.3),0 0 26px rgba(251,113,133,.7);}
+            }
+            </style>""",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
             '<div class="rail-chip" style="color:#ffb3bd;">'
             '<span class="dot" style="background:#fb7185;box-shadow:0 0 12px #fb7185"></span>'
             'API UNREACHABLE</div>',
             unsafe_allow_html=True,
         )
+
+    st.markdown("---")
+    st.markdown('<div class="rail-cap">Navigate</div>', unsafe_allow_html=True)
+    if st.session_state.get("pending_nav"):
+        st.session_state["nav_radio"] = st.session_state.pop("pending_nav")
+    page = st.radio("Navigation", PAGES, label_visibility="collapsed", key="nav_radio")
 
     st.markdown(
         '<div class="rail-foot">FastAPI · scikit-learn<br>Streamlit · FastAPI Cloud</div>',
@@ -1252,6 +1448,8 @@ if page == PAGES[0]:
     ])
 
     section("Try it now", "QUICK DEMO")
+    model_badge()
+    model_switcher()
     lead("Type any Arabic sentence and hit analyze — the request hits the hosted API and returns "
          "real class probabilities.")
     c1, c2 = st.columns([3, 1])
@@ -1291,6 +1489,8 @@ elif page == PAGES[1]:
         "across both classes, plus round-trip latency.",
         ar_line="اكتب جملتك بالعربي — فصحى أو عامية — وشوف الموديل شافها إزاي.",
     )
+    model_badge()
+    model_switcher()
 
     samples = {
         "Blank — write your own": "",
@@ -1355,6 +1555,8 @@ elif page == PAGES[2]:
         "support tickets or review dumps where you want the overall mood fast.",
         ar_line="حلّل قائمة كاملة في طلب واحد وشوف المزاج العام بسرعة.",
     )
+    model_badge()
+    model_switcher()
 
     default_batch = "\n".join([
         "الخدمة ممتازة والتعامل محترم جدا",
@@ -1377,10 +1579,55 @@ elif page == PAGES[2]:
     ], cols=3)
 
     section("Your sentences", "INPUT")
-    raw = st.text_area("One sentence per line", default_batch, height=190)
+    lead("Pick one of the two input modes. Type the sentences by hand, or upload a "
+         "<code>.csv</code> / <code>.tsv</code> file and let the console pick up the "
+         "text column for you.")
+
+    tab_manual, tab_file = st.tabs(["Manual text input", "Upload a file"])
+    m_texts, f_texts = [], []
+
+    with tab_manual:
+        raw = st.text_area("One sentence per line", default_batch, height=190)
+        m_texts = [t.strip() for t in raw.split("\n") if t.strip()]
+        st.caption(f"{len(m_texts)} sentences parsed from the text box.")
+
+    with tab_file:
+        st.markdown(
+            '<p class="lead">Upload a <code>.csv</code> or <code>.tsv</code> file. '
+            'A header row such as <code>text</code> is detected automatically; '
+            'without a header, the first column is used as the sentence.</p>',
+            unsafe_allow_html=True,
+        )
+        up = st.file_uploader("Data file", type=["csv", "tsv"], key="batch_file")
+        f_info = ""
+        if up is not None:
+            f_texts, f_info = parse_text_only(up.getvalue(), up.name)
+            if f_info:
+                st.markdown(f'<div class="info-note">{f_info}</div>', unsafe_allow_html=True)
+            if f_texts:
+                prev = '<table class="tbl"><tr><th>#</th><th>Text</th></tr>'
+                for i, t in enumerate(f_texts[:8], 1):
+                    cls = "arc" if any("\u0600" <= c <= "\u06ff" for c in t) else ""
+                    shown = t if len(t) <= 90 else t[:90] + "…"
+                    prev += f'<tr><td>{i}</td><td class="{cls}">{esc(shown)}</td></tr>'
+                st.markdown(prev + "</table>", unsafe_allow_html=True)
+                st.caption(f"{len(f_texts):,} sentences ready · preview shows the first 8.")
+            else:
+                st.error("No usable sentences were found in that file.")
+
+    if f_texts:
+        texts = f_texts
+        source_note = f"Uploaded file · {up.name}"
+    else:
+        texts = m_texts
+        source_note = "Manual text input"
+
+    st.markdown(
+        f'<div class="src-chip"><b>Active source</b>{esc(source_note)}</div>',
+        unsafe_allow_html=True,
+    )
 
     if st.button("Analyze batch", key="batch"):
-        texts = [t.strip() for t in raw.split("\n") if t.strip()]
         if len(texts) > BATCH_ROW_CAP:
             st.warning(
                 f"{len(texts):,} lines pasted — only the first {BATCH_ROW_CAP} are sent so "
@@ -1429,7 +1676,8 @@ elif page == PAGES[2]:
                     n = float(r["predictions"].get("neg", 0)) * 100
                     good = p >= n
                     html += (
-                        f'<tr><td class="num">{i}</td>'
+                        f'<tr class="{"row-pos" if good else "row-neg"}">'
+                        f'<td class="num">{i}</td>'
                         f'<td class="arc">{esc(r.get("text", ""))}</td>'
                         f'<td class="{"ok" if good else "bad"}">'
                         f'{"Positive" if good else "Negative"}</td>'
@@ -1503,7 +1751,16 @@ elif page == PAGES[3]:
             '<code>الخدمة ممتازة ||| pos</code>.</p>',
             unsafe_allow_html=True,
         )
-        train_raw = st.text_area("Training data", demo, height=210)
+        if st.session_state.pop("prefill_train_data", False) and st.session_state.get("last_train_raw"):
+            st.info(
+                "Prefilled with the data from your last training run "
+                f"({st.session_state.get('last_train_source', 'previous run')}) — "
+                "press **Start training** below to retrain and reactivate it."
+            )
+            default_train_text = st.session_state["last_train_raw"]
+        else:
+            default_train_text = demo
+        train_raw = st.text_area("Training data", default_train_text, height=210)
         m_texts, m_labels, m_bad = parse_manual(train_raw)
         st.caption(f"{len(m_texts)} valid examples parsed from the text box.")
 
@@ -1578,6 +1835,10 @@ elif page == PAGES[3]:
                 with st.spinner("Sending data and starting background training..."):
                     ok, data, meta = api("POST", "/train", {"texts": texts, "labels": labels})
                 if ok:
+                    st.session_state["last_train_raw"] = "\n".join(
+                        f"{t} ||| {l}" for t, l in zip(texts, labels)
+                    )
+                    st.session_state["last_train_source"] = source_note
                     st.success(f"Training started — current status: {data.get('status')}")
                     ph = st.empty()
                     polls = 24
@@ -1588,6 +1849,7 @@ elif page == PAGES[3]:
                                                   st.session_state["api_key"])
                         if sok and sdata.get("status") == "Model Ready":
                             ph.success("New model is live and serving requests.")
+                            st.session_state["own_model_ts"] = sdata.get("timestamp")
                             ev = sdata.get("evaluation", {})
                             if isinstance(ev.get("accuracy"), (int, float)):
                                 st.markdown(
@@ -1617,6 +1879,7 @@ elif page == PAGES[3]:
                                           st.session_state["api_key"])
                 if sok and sdata.get("status") == "Model Ready":
                     st.session_state["watch_training"] = False
+                    st.session_state["own_model_ts"] = sdata.get("timestamp")
                     st.success("Training finished — the new model is live.")
                 else:
                     st.info(f"Current status: {sdata.get('status') if sok else sdata}")
@@ -1699,8 +1962,9 @@ elif page == PAGES[4]:
         bars += bar("Overall accuracy", float(acc) * 100, "nu")
         st.markdown(bars, unsafe_allow_html=True)
 
-        ar_note("الرقمين متقاربين جدًا بين الكلاسين، وده منطقي لأن الداتا متوازنة تقريبًا "
-                "(حوالي ٢٩ ألف إيجابي مقابل ٢٩ ألف سلبي) — فمفيش انحياز لكلاس على حساب التاني.")
+        if not is_own_trained_active():
+            ar_note("الرقمين متقاربين جدًا بين الكلاسين، وده منطقي لأن الداتا متوازنة تقريبًا "
+                    "(حوالي ٢٩ ألف إيجابي مقابل ٢٩ ألف سلبي) — فمفيش انحياز لكلاس على حساب التاني.")
 
         with st.expander("Full raw response"):
             st.code(json.dumps(live_data, ensure_ascii=False, indent=2), language="json")
