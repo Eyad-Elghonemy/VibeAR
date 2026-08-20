@@ -443,6 +443,13 @@ CSS = """
 [data-testid="stToolbar"]{display:none !important;}
 [data-testid="stMainBlockContainer"]{padding-top:2.1rem;max-width:1180px;}
 footer, #MainMenu{visibility:hidden;}
+[data-testid="stExpandSidebarButton"],
+[data-testid="stSidebarCollapsedControl"]{
+  display:flex !important;
+  visibility:visible !important;
+  opacity:1 !important;
+  z-index:999999 !important;
+}
 
 /* ── Arabic accent blocks ───────────────────────────── */
 .ar{
@@ -865,6 +872,72 @@ hr{border-color:var(--stroke);}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
+
+# ── Custom sidebar re-open button (fallback, independent of Streamlit's
+#    internal collapsed-control testid so it works across versions) ──────────
+# NOTE: st.markdown() does not execute <script> tags (they're stripped on
+# insertion), so this must use components.html which renders in an iframe
+# and can reach the real document via window.parent.document.
+import streamlit.components.v1 as _components
+
+_components.html(
+    """
+    <style>
+    #custom-sidebar-btn{
+      position:fixed;top:14px;left:14px;z-index:1000000;
+      width:38px;height:38px;border-radius:10px;
+      background:rgba(255,255,255,.10);
+      border:1px solid rgba(255,255,255,.18);
+      display:flex;align-items:center;justify-content:center;
+      cursor:pointer;color:#e8ebf5;font-size:16px;font-family:sans-serif;
+      backdrop-filter:blur(6px);
+      transition:background .15s ease;
+    }
+    #custom-sidebar-btn:hover{background:rgba(255,255,255,.20);}
+    </style>
+    <div id="custom-sidebar-btn" title="Open sidebar">&raquo;</div>
+    <script>
+    (function(){
+      const doc = window.parent.document;
+
+      // Move the button into the real page (not this iframe) so it can be
+      // fixed-positioned relative to the actual app, not the tiny iframe.
+      const btn = document.getElementById('custom-sidebar-btn');
+      const styleTag = document.querySelector('style');
+      if(!doc.getElementById('custom-sidebar-btn')){
+        doc.body.appendChild(styleTag.cloneNode(true));
+        doc.body.appendChild(btn);
+      }
+      const liveBtn = doc.getElementById('custom-sidebar-btn');
+
+      liveBtn.onclick = function(){
+        const real = doc.querySelector('[data-testid="stExpandSidebarButton"] button')
+                  || doc.querySelector('[data-testid="stExpandSidebarButton"]')
+                  || doc.querySelector('[data-testid="stSidebarCollapsedControl"] button')
+                  || doc.querySelector('[data-testid="stSidebarCollapsedControl"]')
+                  || doc.querySelector('button[aria-label*="sidebar" i]')
+                  || doc.querySelector('[data-testid="collapsedControl"]');
+        if(real){
+          ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(function(type){
+            real.dispatchEvent(new MouseEvent(type, {bubbles:true, cancelable:true, view: doc.defaultView}));
+          });
+        }
+      };
+
+      function sync(){
+        const sidebar = doc.querySelector('[data-testid="stSidebar"]');
+        if(sidebar && liveBtn){
+          const collapsed = sidebar.offsetWidth < 10;
+          liveBtn.style.display = collapsed ? 'flex' : 'none';
+        }
+      }
+      setInterval(sync, 300);
+    })();
+    </script>
+    """,
+    height=0,
+    width=0,
+)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
