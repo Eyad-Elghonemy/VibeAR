@@ -30,17 +30,10 @@ from PIL import Image
 
 API_BASE = "https://vibear-0eb67d30.fastapicloud.dev"   # built into the page
 API_BASE_DEFAULT = API_BASE
-_DEMO_KEY = "c0c2d9d05029aed5d5174ff5ff8e6d88"
 
-def _secret(name: str, fallback: str) -> str:
-    """Prefers .streamlit/secrets.toml so the key never has to live in the source."""
-    try:
-        return str(st.secrets[name])
-    except Exception:
-        return fallback
-
-
-API_KEY_DEFAULT = _secret("VIBEAR_API_KEY", _DEMO_KEY)
+# No default/demo key lives in the source. The user types their own key
+# into the sidebar each session — nothing to leak, nothing to rotate.
+API_KEY_DEFAULT = ""
 
 # Brand logo (embedded so the app stays a single file)
 LOGO_SVG_B64 = (
@@ -1720,24 +1713,32 @@ elif page == PAGES[2]:
                             if float(r["predictions"].get("pos", 0))
                             >= float(r["predictions"].get("neg", 0)))
                 neg_n = len(rows) - pos_n
+                total_rows = len(rows)
+
+                if total_rows == 0:
+                    st.warning("The API returned no usable predictions.")
+                    st.stop()
+
                 avg_conf = (sum(max(float(r["predictions"].get("pos", 0)),
                                     float(r["predictions"].get("neg", 0))) for r in rows)
-                            / max(len(rows), 1) * 100)
+                            / total_rows * 100)
+                pos_share = pos_n / total_rows * 100
+                neg_share = neg_n / total_rows * 100
 
                 section("Summary", "AGGREGATE")
                 grid([
-                    kpi("Sentences", str(len(rows)), "in one request", 0.0),
-                    kpi("Positive", str(pos_n), f"{pos_n / len(rows) * 100:.0f}% of total",
+                    kpi("Sentences", str(total_rows), "in one request", 0.0),
+                    kpi("Positive", str(pos_n), f"{pos_share:.0f}% of total",
                         0.08, "#8ff0c8"),
-                    kpi("Negative", str(neg_n), f"{neg_n / len(rows) * 100:.0f}% of total",
+                    kpi("Negative", str(neg_n), f"{neg_share:.0f}% of total",
                         0.16, "#ffb3bd"),
                     kpi("Mean confidence", f"{avg_conf:.0f}%", f"request took {meta['ms']:.0f}ms",
                         0.24),
                 ], cols=4)
 
                 st.markdown(
-                    bar("Positive share", pos_n / len(rows) * 100, "pos")
-                    + bar("Negative share", neg_n / len(rows) * 100, "neg"),
+                    bar("Positive share", pos_share, "pos")
+                    + bar("Negative share", neg_share, "neg"),
                     unsafe_allow_html=True,
                 )
 
