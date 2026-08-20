@@ -951,6 +951,13 @@ def ar_note(text: str) -> None:
     st.markdown(f'<div class="ar-note">{text}</div>', unsafe_allow_html=True)
 
 
+def evaluation_dict(value) -> dict:
+    """Always returns a dict, even if the API sent evaluation: null or a
+    non-dict value. Prevents AttributeError anywhere .get() is chained
+    off the evaluation payload."""
+    return value if isinstance(value, dict) else {}
+
+
 def is_own_trained_active() -> bool:
     """True if the live /status timestamp matches the one this session
     recorded right after a successful training run."""
@@ -978,7 +985,7 @@ def model_badge() -> None:
             unsafe_allow_html=True,
         )
         return
-    ev = data.get("evaluation", {})
+    ev = evaluation_dict(data.get("evaluation"))
     acc = ev.get("accuracy")
     ts = data.get("timestamp", "")
     acc_txt = f"{acc * 100:.1f}% accuracy" if isinstance(acc, (int, float)) else "accuracy n/a"
@@ -1024,6 +1031,8 @@ def model_switcher() -> None:
             with st.spinner("Switching..."):
                 ok2, data2, meta2 = api("POST", "/use-default-model")
             if ok2:
+                st.session_state.pop("own_model_ts", None)
+                st.session_state["watch_training"] = False
                 fetch_status.clear()
                 st.success("Switched — predictions now use the default model.")
                 st.rerun()
@@ -1480,7 +1489,12 @@ if page == PAGES[0]:
 
     acc = "78.9%"
     if live_ok:
-        acc = f"{live_data.get('evaluation', {}).get('accuracy', 0) * 100:.1f}%"
+        ev = evaluation_dict(live_data.get("evaluation"))
+        try:
+            acc_val = float(ev.get("accuracy", 0.0))
+        except (TypeError, ValueError):
+            acc_val = 0.0
+        acc = f"{acc_val * 100:.1f}%"
 
     section("At a glance", "NUMBERS")
     grid([
@@ -1913,41 +1927,68 @@ elif page == PAGES[3]:
                         f"{t} ||| {l}" for t, l in zip(texts, labels)
                     )
                     st.session_state["last_train_source"] = source_note
+                    st.session_state["watch_training"] = True
+                    st.session_state["train_poll_attempts"] = 0
                     st.success(f"Training started — current status: {data.get('status')}")
-                    ph = st.empty()
-                    polls = 24
-                    for i in range(polls):
-                        time.sleep(2.0 if i < 8 else 4.0)
-                        fetch_status.clear()
-                        sok, sdata = fetch_status(st.session_state["api_base"],
-                                                  st.session_state["api_key"])
-                        if sok and sdata.get("status") == "Model Ready":
-                            ph.success("New model is live and serving requests.")
-                            st.session_state["own_model_ts"] = sdata.get("timestamp")
-                            ev = sdata.get("evaluation", {})
-                            if isinstance(ev.get("accuracy"), (int, float)):
-                                st.markdown(
-                                    kpi("Your model accuracy", f"{ev['accuracy'] * 100:.1f}%",
-                                        "internal test split"),
-                                    unsafe_allow_html=True,
-                                )
-                            break
-                        ph.info(
-                            f"Training in progress... (check {i + 1}/{polls}) — "
-                            "the API is still responding"
-                        )
-                    else:
-                        ph.warning(
-                            "Still training after a few minutes. The run keeps going on the "
-                            "server — press the button below or open Model Status to see the "
-                            "result."
-                        )
-                        st.session_state["watch_training"] = True
+                    st.info(
+                        "Training is running in the background. This page will keep "
+                        "checking automatically every few seconds — feel free to switch "
+                        "pages and come back, or press **Check training result** below."
+                    )
+                    st.rerun()
                 else:
                     st.error(f"Training failed: {data}")
 
+        # Non-blocking auto-poll: each script run does at most ONE quick status
+        # check plus a short wait before the next rerun, instead of a single
+        # run sleeping for up to two minutes straight. This keeps the app
+        # responsive — the user can navigate away or click other buttons
+        # between reruns.
+        AUTO_POLL_ATTEMPTS = 20
+
+        if st.session_state.get("watch_training"):
+            attempts = st.session_state.get("train_poll_attempts", 0)
+
+            if attempts < AUTO_POLL_ATTEMPTS:
+                fetch_status.clear()
+                sok, sdata = fetch_status(st.session_state["api_base"],
+                                          st.session_state["api_key"])
+                if sok and sdata.get("status") == "Model Ready":
+                    st.session_state["watch_training"] = False
+                    st.session_state["own_model_ts"] = sdata.get("timestamp")
+                    st.success("Training finished — the new model is live.")
+                    ev = evaluation_dict(sdata.get("evaluation"))
+                    acc = ev.get("accuracy")
+                    if isinstance(acc, (int, float)):
+                        st.markdown(
+                            kpi("Your model accuracy", f"{acc * 100:.1f}%",
+                                "internal test split"),
+                            unsafe_allow_html=True,
+                        )
+                elif sok and sdata.get("status") == "Training":
+                    st.info(
+                        f"Training in progress... (auto-check {attempts + 1}/{AUTO_POLL_ATTEMPTS})"
+                    )
+                    st.session_state["train_poll_attempts"] = attempts + 1
+                    time.sleep(3.0)
+                    st.rerun()
+                else:
+                    st.warning(
+                        f"Current server status: {sdata.get('status', 'Unknown') if sok else sdata}"
+                    )
+                    st.session_state["train_poll_attempts"] = attempts + 1
+                    time.sleep(3.0)
+                    st.rerun()
+            else:
+                st.warning(
+                    "Still training after a while. The run keeps going on the server — "
+                    "press the button below or open Model Status to check on it whenever "
+                    "you like."
+                )
+
         if st.session_state.get("watch_training"):
             if st.button("Check training result", key="recheck_train"):
+                st.session_state["train_poll_attempts"] = 0
                 fetch_status.clear()
                 sok, sdata = fetch_status(st.session_state["api_base"],
                                           st.session_state["api_key"])
@@ -1963,6 +2004,8 @@ elif page == PAGES[3]:
             with st.spinner("Restoring..."):
                 ok, data, meta = api("POST", "/use-default-model")
             if ok:
+                st.session_state.pop("own_model_ts", None)
+                st.session_state["watch_training"] = False
                 fetch_status.clear()
                 st.success("Default model restored as the active model.")
                 st.code(json.dumps(data, ensure_ascii=False, indent=2)[:900], language="json")
@@ -1989,8 +2032,11 @@ elif page == PAGES[4]:
     if not live_ok:
         st.error(f"Could not fetch status: {live_data}")
     else:
-        ev = live_data.get("evaluation", {})
-        acc = ev.get("accuracy", 0)
+        ev = evaluation_dict(live_data.get("evaluation"))
+        try:
+            acc = float(ev.get("accuracy", 0.0))
+        except (TypeError, ValueError):
+            acc = 0.0
         ts = live_data.get("timestamp", "")
         grid([
             kpi("State", live_data.get("status", "—"), "active model", 0.0, "#8ff0c8"),
